@@ -9,7 +9,7 @@ kube-state-metrics:
 prometheus-node-exporter:
   enabled: false
 
-pushgateway:
+prometheus-pushgateway:
   enabled: false
 
 server:

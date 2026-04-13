@@ -33,13 +33,13 @@ variable "vpc_cidr" {
 variable "cluster_version" {
   description = "Kubernetes version for EKS"
   type        = string
-  default     = "1.29"
+  default     = "1.30"
 }
 
 variable "node_instance_type" {
   description = "EC2 instance type for EKS worker nodes"
   type        = string
-  default     = "t3.micro" # Free Tier eligible in this AWS account; keeps the node group launchable
+  default     = "t3.small" # t3.micro runs out of pod IP slots for the app + monitoring stack
 }
 
 variable "node_min_size" {
@@ -63,7 +63,7 @@ variable "node_desired_size" {
 variable "github_repository" {
   description = "GitHub repository allowed to assume the CI/CD role, in owner/repo format"
   type        = string
-  default     = null
+  default     = "kayasemih/baykar-devops-assessment"
 }
 
 variable "github_oidc_branch" {

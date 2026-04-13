@@ -172,6 +172,20 @@ jobs:
       - name: Install Prometheus
         if: steps.prerequisites.outputs.ready == 'true'
         run: |
+          PROMETHEUS_STATUS=$(helm status monitoring-prometheus -n monitoring -o json 2>/dev/null | jq -r '.info.status' 2>/dev/null || true)
+
+          if [[ "$PROMETHEUS_STATUS" == pending-* ]]; then
+            LAST_GOOD_REVISION=$(helm history monitoring-prometheus -n monitoring -o json | jq -r '[.[] | select(.status == "deployed" or .status == "superseded")][-1].revision // empty')
+
+            if [ -n "$LAST_GOOD_REVISION" ]; then
+              echo "Release is $PROMETHEUS_STATUS; rolling back to revision $LAST_GOOD_REVISION before retrying."
+              helm rollback monitoring-prometheus "$LAST_GOOD_REVISION" -n monitoring
+            else
+              echo "Release is $PROMETHEUS_STATUS with no good revision; uninstalling before retrying."
+              helm uninstall monitoring-prometheus -n monitoring
+            fi
+          fi
+
           helm upgrade --install monitoring-prometheus prometheus-community/prometheus \
             --namespace monitoring \
             --values helm/monitoring/prometheus-values.yaml \
