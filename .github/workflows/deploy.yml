@@ -118,6 +118,9 @@ jobs:
           MONGO_ROOT_USER: ${{ secrets.MONGO_ROOT_USER }}
           MONGO_ROOT_PASS: ${{ secrets.MONGO_ROOT_PASS }}
         run: |
+          ECR_REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          GIT_SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+
           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/monitoring/namespace.yaml
 
@@ -151,15 +154,23 @@ jobs:
           rm -f "$ALERTMANAGER_FILE"
 
           kubectl apply -f k8s/mongodb/service.yaml
-          kubectl apply -f k8s/mongodb/statefulset.yaml
+          kubectl set image --local -f k8s/mongodb/statefulset.yaml \
+            mongodb=${ECR_REGISTRY}/baykar-devops/mongodb:${GIT_SHA} \
+            -o yaml | kubectl apply -f -
           kubectl apply -f k8s/backend/configmap.yaml
-          kubectl apply -f k8s/backend/deployment.yaml
+          kubectl set image --local -f k8s/backend/deployment.yaml \
+            backend=${ECR_REGISTRY}/baykar-devops/backend:${GIT_SHA} \
+            -o yaml | kubectl apply -f -
           kubectl apply -f k8s/backend/service.yaml
           kubectl apply -f k8s/backend/hpa.yaml
-          kubectl apply -f k8s/frontend/deployment.yaml
+          kubectl set image --local -f k8s/frontend/deployment.yaml \
+            frontend=${ECR_REGISTRY}/baykar-devops/frontend:${GIT_SHA} \
+            -o yaml | kubectl apply -f -
           kubectl apply -f k8s/frontend/service.yaml
           kubectl apply -f k8s/frontend/hpa.yaml
-          kubectl apply -f k8s/etl-cronjob.yaml
+          kubectl set image --local -f k8s/etl-cronjob.yaml \
+            etl=${ECR_REGISTRY}/baykar-devops/etl:${GIT_SHA} \
+            -o yaml | kubectl apply -f -
           kubectl apply -f k8s/network-policy.yaml
 
           kubectl apply -f k8s/monitoring/prometheus/alertmanager.yaml
