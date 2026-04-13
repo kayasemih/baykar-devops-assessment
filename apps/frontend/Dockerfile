@@ -20,16 +20,20 @@ RUN npm run build
 # ============================================================
 # The final image is just Nginx + static files. No Node.js, no node_modules.
 # Result: ~25MB image instead of ~500MB+
-FROM nginxinc/nginx-unprivileged:1.25-alpine
+FROM nginxinc/nginx-unprivileged:1.29.2-alpine
+
+USER root
 
 # Remove default nginx config
-RUN rm /etc/nginx/conf.d/default.conf
+RUN apk upgrade --no-cache && rm /etc/nginx/conf.d/default.conf
 
 # Copy our custom nginx config (SPA routing + API proxy)
 COPY nginx.conf /etc/nginx/conf.d/
 
 # Copy the built React app from stage 1
 COPY --from=build /app/build /usr/share/nginx/html
+
+USER 101
 
 # Nginx runs on port 8080 in the unprivileged image
 EXPOSE 8080

@@ -13,6 +13,15 @@ FROM node:18-alpine
 
 WORKDIR /app
 
+USER root
+
+RUN apk upgrade --no-cache
+
+# Runtime does not need npm or npx. Removing them shrinks the image and
+# avoids carrying package manager CVEs into production.
+RUN rm -rf /usr/local/lib/node_modules/npm \
+  && rm -f /usr/local/bin/npm /usr/local/bin/npx
+
 COPY --from=deps /app/node_modules ./node_modules
 
 # Copy application source
