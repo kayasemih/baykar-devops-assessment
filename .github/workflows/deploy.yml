@@ -256,7 +256,7 @@ jobs:
         if: steps.prerequisites.outputs.ready == 'true' && (github.event_name != 'workflow_dispatch' || !inputs.monitoring_only)
         run: |
           echo "Waiting for MongoDB rollout..."
-          kubectl rollout status statefulset/mongodb -n ${{ env.NAMESPACE }} --timeout=180s
+          kubectl rollout status statefulset/mongodb -n ${{ env.NAMESPACE }} --timeout=600s
 
           echo "Waiting for backend rollout..."
           kubectl rollout status deployment/backend -n ${{ env.NAMESPACE }} --timeout=180s
@@ -296,6 +296,21 @@ jobs:
 
           echo "Smoke test failed."
           exit 1
+
+      - name: Gather application diagnostics on failure
+        if: failure() && steps.prerequisites.outputs.ready == 'true' && (github.event_name != 'workflow_dispatch' || !inputs.monitoring_only)
+        run: |
+          echo "Application workloads"
+          kubectl get all -n ${{ env.NAMESPACE }} -o wide || true
+
+          echo "Application pod descriptions"
+          kubectl describe pods -n ${{ env.NAMESPACE }} || true
+
+          echo "MongoDB logs"
+          kubectl logs statefulset/mongodb -n ${{ env.NAMESPACE }} --tail=200 || true
+
+          echo "Application events"
+          kubectl get events -n ${{ env.NAMESPACE }} --sort-by=.lastTimestamp || true
 
       - name: Rollback on failure
         if: failure() && steps.prerequisites.outputs.ready == 'true' && (github.event_name != 'workflow_dispatch' || !inputs.monitoring_only)
