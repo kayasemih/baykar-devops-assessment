@@ -15,9 +15,10 @@ describe("MERN application smoke flow", () => {
     cy.get("#position").type("Platform Engineer");
     cy.get("#positionIntern").click({ force: true });
     cy.contains("Create person").click({ force: true });
+    cy.location("pathname").should("eq", "/");
 
     cy.visit("/records");
-    cy.contains("td", employeeName).should("exist");
+    cy.contains("td", employeeName, { timeout: 10000 }).should("exist");
     cy.screenshot("record-list");
     cy.contains("tr", employeeName).contains("Delete").click({ force: true });
     cy.contains("td", employeeName).should("not.exist");
