@@ -63,6 +63,15 @@ data "aws_iam_policy_document" "github_actions_permissions" {
   }
 
   statement {
+    sid    = "CreateProjectEcrRepositories"
+    effect = "Allow"
+    actions = [
+      "ecr:CreateRepository",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
     sid    = "PushProjectImagesToEcr"
     effect = "Allow"
     actions = [
