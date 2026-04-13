@@ -161,12 +161,14 @@ jobs:
           helm upgrade --install monitoring-prometheus prometheus-community/prometheus \
             --namespace monitoring \
             --values helm/monitoring/prometheus-values.yaml \
-            --wait
+            --wait \
+            --timeout 15m
 
           helm upgrade --install monitoring-grafana grafana/grafana \
             --namespace monitoring \
             --values helm/monitoring/grafana-values.yaml \
-            --wait
+            --wait \
+            --timeout 15m
 
       - name: Set runtime images
         if: steps.prerequisites.outputs.ready == 'true'
