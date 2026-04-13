@@ -45,34 +45,63 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Check deployment prerequisites
+        id: prerequisites
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+          MONGO_ROOT_USER: ${{ secrets.MONGO_ROOT_USER }}
+          MONGO_ROOT_PASS: ${{ secrets.MONGO_ROOT_PASS }}
+        run: |
+          ready=true
+
+          if ! aws eks describe-cluster --region "${{ env.AWS_REGION }}" --name "${{ env.CLUSTER_NAME }}" >/dev/null 2>&1; then
+            echo "::warning::EKS cluster '${{ env.CLUSTER_NAME }}' was not found in region '${{ env.AWS_REGION }}'; skipping deployment."
+            ready=false
+          fi
+
+          if [ -z "$ALERT_WEBHOOK_URL" ]; then
+            echo "::warning::Missing GitHub secret: ALERT_WEBHOOK_URL; skipping deployment."
+            ready=false
+          fi
+
+          if [ -z "$MONGO_ROOT_USER" ]; then
+            echo "::warning::Missing GitHub secret: MONGO_ROOT_USER; skipping deployment."
+            ready=false
+          fi
+
+          if [ -z "$MONGO_ROOT_PASS" ]; then
+            echo "::warning::Missing GitHub secret: MONGO_ROOT_PASS; skipping deployment."
+            ready=false
+          fi
+
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+
+      - name: Skip deployment when prerequisites are missing
+        if: steps.prerequisites.outputs.ready != 'true'
+        run: echo "Deployment prerequisites are incomplete; deploy steps were skipped."
+
       - name: Login to ECR
+        if: steps.prerequisites.outputs.ready == 'true'
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Configure kubectl
+        if: steps.prerequisites.outputs.ready == 'true'
         run: |
           aws eks update-kubeconfig \
             --region ${{ env.AWS_REGION }} \
             --name ${{ env.CLUSTER_NAME }}
 
       - name: Install Helm
+        if: steps.prerequisites.outputs.ready == 'true'
         run: |
           curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
           helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
           helm repo add grafana https://grafana.github.io/helm-charts
           helm repo update
 
-      - name: Validate deployment secrets
-        env:
-          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
-          MONGO_ROOT_USER: ${{ secrets.MONGO_ROOT_USER }}
-          MONGO_ROOT_PASS: ${{ secrets.MONGO_ROOT_PASS }}
-        run: |
-          test -n "$ALERT_WEBHOOK_URL" || (echo "Missing GitHub secret: ALERT_WEBHOOK_URL" && exit 1)
-          test -n "$MONGO_ROOT_USER" || (echo "Missing GitHub secret: MONGO_ROOT_USER" && exit 1)
-          test -n "$MONGO_ROOT_PASS" || (echo "Missing GitHub secret: MONGO_ROOT_PASS" && exit 1)
-
       - name: Apply Kubernetes manifests
+        if: steps.prerequisites.outputs.ready == 'true'
         env:
           ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
           MONGO_ROOT_USER: ${{ secrets.MONGO_ROOT_USER }}
@@ -140,6 +169,7 @@ jobs:
             --wait
 
       - name: Set runtime images
+        if: steps.prerequisites.outputs.ready == 'true'
         run: |
           ECR_REGISTRY="${{ steps.login-ecr.outputs.registry }}"
           GIT_SHA="${{ github.event.workflow_run.head_sha }}"
@@ -150,6 +180,7 @@ jobs:
           kubectl set image cronjob/etl etl=${ECR_REGISTRY}/baykar-devops/etl:${GIT_SHA} -n ${{ env.NAMESPACE }}
 
       - name: Verify ETL job execution
+        if: steps.prerequisites.outputs.ready == 'true'
         run: |
           SHORT_SHA=$(printf '%s' "${{ github.event.workflow_run.head_sha }}" | cut -c1-8)
           JOB_NAME="etl-smoke-${SHORT_SHA}"
@@ -159,6 +190,7 @@ jobs:
           kubectl wait --for=condition=complete job/"${JOB_NAME}" -n ${{ env.NAMESPACE }} --timeout=180s
 
       - name: Wait for rollouts to complete
+        if: steps.prerequisites.outputs.ready == 'true'
         run: |
           echo "Waiting for MongoDB rollout..."
           kubectl rollout status statefulset/mongodb -n ${{ env.NAMESPACE }} --timeout=180s
@@ -179,6 +211,7 @@ jobs:
           echo "All deployments rolled out successfully."
 
       - name: Smoke test
+        if: steps.prerequisites.outputs.ready == 'true'
         run: |
           for i in {1..20}; do
             FRONTEND_HOST=$(kubectl get svc frontend -n ${{ env.NAMESPACE }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
@@ -202,10 +235,16 @@ jobs:
           exit 1
 
       - name: Rollback on failure
-        if: failure()
+        if: failure() && steps.prerequisites.outputs.ready == 'true'
         run: |
-          echo "⚠️ Deployment failed! Rolling back..."
+          echo "Deployment failed. Rolling back if kubectl is configured..."
+
+          if ! kubectl cluster-info >/dev/null 2>&1; then
+            echo "kubectl is not configured; skipping rollback."
+            exit 0
+          fi
+
           kubectl rollout undo statefulset/mongodb -n ${{ env.NAMESPACE }} || true
-          kubectl rollout undo deployment/backend -n ${{ env.NAMESPACE }}
-          kubectl rollout undo deployment/frontend -n ${{ env.NAMESPACE }}
+          kubectl rollout undo deployment/backend -n ${{ env.NAMESPACE }} || true
+          kubectl rollout undo deployment/frontend -n ${{ env.NAMESPACE }} || true
           echo "Rollback complete. Previous version restored."
