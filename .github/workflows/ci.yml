@@ -215,6 +215,23 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Verify required ECR repositories
+        run: |
+          REQUIRED_REPOS=(
+            baykar-devops/frontend
+            baykar-devops/backend
+            baykar-devops/etl
+            baykar-devops/mongodb
+          )
+
+          for repo in "${REQUIRED_REPOS[@]}"; do
+            if ! aws ecr describe-repositories --region "${AWS_REGION}" --repository-names "$repo" >/dev/null 2>&1; then
+              echo "Missing ECR repository: $repo"
+              echo "Create it by applying terraform/ecr.tf in account 454252678102 and region ${AWS_REGION}."
+              exit 1
+            fi
+          done
+
       - name: Login to ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
