@@ -30,7 +30,7 @@ services:
       # In production, these would come from a secrets manager.
       # For local dev, plain env vars are fine.
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASS:-baykar2024}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASS:-localdev-change-me}
       MONGO_INITDB_DATABASE: sample_training
     volumes:
       - mongodb_data:/data/db
@@ -56,7 +56,7 @@ services:
       - "5050:5050"
     environment:
       # mongodb:// not mongodb+srv:// — we're connecting to our local container, not Atlas
-      ATLAS_URI: mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASS:-baykar2024}@mongodb:27017/sample_training?authSource=admin
+      ATLAS_URI: mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASS:-localdev-change-me}@mongodb:27017/sample_training?authSource=admin
     depends_on:
       mongodb:
         condition: service_healthy
