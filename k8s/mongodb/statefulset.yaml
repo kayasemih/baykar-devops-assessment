@@ -65,21 +65,46 @@ spec:
           livenessProbe:
             exec:
               command:
-                - mongosh
-                - --eval
-                - "db.adminCommand('ping')"
+                - sh
+                - -c
+                - >-
+                  mongosh --quiet
+                  --username "$MONGO_INITDB_ROOT_USERNAME"
+                  --password "$MONGO_INITDB_ROOT_PASSWORD"
+                  --authenticationDatabase admin
+                  --eval "db.adminCommand('ping').ok"
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - >-
+                  mongosh --quiet
+                  --username "$MONGO_INITDB_ROOT_USERNAME"
+                  --password "$MONGO_INITDB_ROOT_PASSWORD"
+                  --authenticationDatabase admin
+                  --eval "db.adminCommand('ping').ok"
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
           # Readiness: can it accept traffic? If not, Service removes it from endpoints.
           readinessProbe:
             exec:
               command:
-                - mongosh
-                - --eval
-                - "db.adminCommand('ping')"
+                - sh
+                - -c
+                - >-
+                  mongosh --quiet
+                  --username "$MONGO_INITDB_ROOT_USERNAME"
+                  --password "$MONGO_INITDB_ROOT_PASSWORD"
+                  --authenticationDatabase admin
+                  --eval "db.adminCommand('ping').ok"
             initialDelaySeconds: 10
             periodSeconds: 5
+            timeoutSeconds: 5
       # Security context: don't run as root inside the container
       # MongoDB image runs as user 999 (mongodb) by default
   volumeClaimTemplates:
