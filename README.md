@@ -74,11 +74,12 @@ make etl
 2. `mongodb-secret` değerlerini GitHub secret'lardan üretir
 3. Alertmanager webhook secret'ını üretir
 4. Uygulama manifestlerini, Loki/Alertmanager bileşenlerini ve Helm tabanli monitoring release'lerini uygular
-5. Frontend, backend, MongoDB ve ETL image'larını SHA tag'i ile set eder
-6. ETL CronJob'u bir kez tetikleyip tamamlandığını doğrular
-7. Rollout bekler
-8. Dış yük dengeleyici üzerinden `http://<lb>/api/readyz/` smoke testi yapar
-9. Başarısızlıkta frontend ve backend deployment rollback uygular
+5. Frontend, backend, MongoDB ve ETL workload'larini SHA tag'li ECR image'lari ile render edip uygular
+6. MongoDB icin stale pod kaldiysa yeni StatefulSet revision'iyle yeniden olusmasini zorlar
+7. ETL CronJob'u bir kez tetikleyip tamamlandığını doğrular
+8. Rollout bekler
+9. Dış yük dengeleyici üzerinden `http://<lb>/api/readyz/` smoke testi yapar
+10. Başarısızlıkta frontend ve backend deployment rollback uygular
 
 Gerekli GitHub secret'ları:
 
@@ -138,10 +139,26 @@ Beklenen kanıt dosyaları:
 - `docs/screenshots/cypress/endToEnd.spec.js/app-home.png`
 - `docs/screenshots/cypress/endToEnd.spec.js/record-list.png`
 
-Cloud deploy sonrası aşağıdaki ek kanıtlar da eklenmelidir:
+Cloud deploy sonrası eklenen kanıt dosyalari:
 
-- dış yük dengeleyici URL'sini gösteren ekran görüntüsü
-- ETL CronJob'un en az bir başarılı koşusunu gösteren çıktı veya log ekran görüntüsü
+- `docs/screenshots/eks/frontend-lb-home.png`
+- `docs/screenshots/eks/backend-readyz.png`
+- `docs/screenshots/eks/etl-job-success.png`
+- `docs/screenshots/eks/github-actions-green.png`
+
+## Final Teslim Kontrolu
+
+Teknik hedefler ve evaluator odakli teslim kanitlari artik repo icinde tamamlanmistir.
+
+Hazir olanlar:
+
+- Dockerfile'lar, Kubernetes manifestleri, Terraform ve GitHub Actions workflow'lari repoda mevcut
+- `main` branch deploy akisi calisan SHA image'lariyla stabilize edildi
+- Lokal smoke ekran goruntuleri `docs/screenshots/cypress/endToEnd.spec.js/` altinda mevcut
+
+- EKS kanit dosyalari `docs/screenshots/eks/` altinda mevcut
+
+Evaluator odakli son kontrol listesi icin `docs/submission-checklist.md` dosyasina bakabilirsiniz.
 
 ## Dokümanlar
 

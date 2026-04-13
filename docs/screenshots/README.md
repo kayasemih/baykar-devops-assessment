@@ -6,14 +6,16 @@ Mevcut akış:
 
 - Cypress smoke testi çalıştırıldığında `cypress/endToEnd.spec.js/app-home.png` ve `cypress/endToEnd.spec.js/record-list.png` burada üretilir
 
-Cloud deploy tamamlandıktan sonra aşağıdaki ek görüntü de eklenmelidir:
+Cloud deploy tamamlandiktan sonra eklenen EKS kanitlari:
 
-- Tarayıcı adres çubuğunda dış load balancer hostname görünürken uygulama ana ekranı
-- `kubectl get jobs -n baykar-app` çıktısı veya ETL smoke job log kanıtı
+- `eks/frontend-lb-home.png`
+- `eks/backend-readyz.png`
+- `eks/etl-job-success.png`
+- `eks/github-actions-green.png`
 
 Önerilen son kontrol:
 
 1. `make up`
 2. `cd apps/frontend && npm ci && npx cypress run`
-3. EKS deploy sonrası `kubectl create job --from=cronjob/etl etl-smoke-manual -n baykar-app` ile ETL'yi bir kez tetikle
-4. Dış hostname ile manuel ekran görüntüsü ve ETL kanıtı ekle
+3. EKS deploy sonrasi `docs/screenshots/eks/` altindaki canli kanitlari kontrol et
+4. Final teslimde README ve checklist ile ekran goruntusu dosya adlarini eslestir
