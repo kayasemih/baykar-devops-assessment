@@ -222,6 +222,12 @@ jobs:
           echo "Monitoring pod descriptions"
           kubectl describe pods -n monitoring || true
 
+          echo "Prometheus server logs"
+          kubectl logs deployment/monitoring-prometheus-server -n monitoring -c prometheus-server --tail=200 || true
+
+          echo "Prometheus server previous logs"
+          kubectl logs deployment/monitoring-prometheus-server -n monitoring -c prometheus-server --previous --tail=200 || true
+
           echo "Monitoring events"
           kubectl get events -n monitoring --sort-by=.lastTimestamp || true
 
