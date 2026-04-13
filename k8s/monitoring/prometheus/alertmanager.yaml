@@ -37,7 +37,7 @@ spec:
       volumes:
         - name: config
           secret:
-            name: alertmanager-config
+            secretName: alertmanager-config
 
 ---
 apiVersion: v1
