@@ -12,7 +12,8 @@
 #   │  ┌── AZ-a ──────────┐  ┌── AZ-b ──────────┐ │
 #   │  │ Public: 10.0.1.0  │  │ Public: 10.0.2.0  │ │
 #   │  │  - NAT Gateway    │  │                    │ │
-#   │  │  - ALB            │  │  - ALB             │ │
+#   │  │  - NLB / Service  │  │  - NLB / Service   │ │
+#   │  │    LoadBalancer   │  │    LoadBalancer    │ │
 #   │  ├───────────────────┤  ├───────────────────┤ │
 #   │  │ Private: 10.0.11.0│  │ Private: 10.0.12.0│ │
 #   │  │  - EKS Nodes      │  │  - EKS Nodes      │ │
@@ -46,7 +47,7 @@ resource "aws_internet_gateway" "main" {
 }
 
 # --- Public Subnets (2 AZs) ---
-# ALB and NAT Gateway live here
+# NAT Gateway and Service LoadBalancer resources live here
 resource "aws_subnet" "public" {
   count = 2
 

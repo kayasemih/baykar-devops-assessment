@@ -5,7 +5,7 @@
 #   cp terraform.tfvars.example terraform.tfvars
 # ============================================================
 
-aws_region         = "eu-west-1"
+aws_region         = "eu-central-1"
 environment        = "dev"
 project_name       = "baykar-devops"
 cluster_version    = "1.29"

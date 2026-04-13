@@ -68,7 +68,7 @@ terraform output -raw github_actions_role_arn
 `kubectl` erişimi:
 
 ```bash
-aws eks update-kubeconfig --region eu-west-1 --name baykar-devops-eks
+aws eks update-kubeconfig --region eu-central-1 --name baykar-devops-eks
 kubectl get nodes
 ```
 
@@ -82,6 +82,8 @@ Repository secret'ları:
 - `MONGO_ROOT_PASS`
 
 CI `main` branch'e push edildiğinde image'ları SHA tag ile ECR'a yollar. `deploy.yml` workflow'u başarılı CI koşusundan sonra deploy yapar.
+
+Not: `deploy.yml`, EKS cluster'i veya gerekli secret'lar eksikse warning yazarak deploy adimlarini skip eder. Bu durumda workflow yesil gorunebilir, ancak gercek cluster deploy'u gerceklesmemis olur.
 
 OIDC trust policy varsayılan olarak yalnızca `main` branch için izin verir. Başka bir branch kullanılacaksa `github_oidc_branch` değişkenini Terraform'da güncelleyin.
 

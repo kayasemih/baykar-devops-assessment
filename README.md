@@ -89,6 +89,8 @@ Gerekli GitHub secret'ları:
 
 `AWS_ROLE_ARN`, `terraform` apply sırasında `github_repository` değişkeni verilirse `github_actions_role_arn` output'u olarak üretilebilir.
 
+Not: `deploy.yml` eksik cluster veya secret durumunda warning verip deploy adımlarını bilincli olarak skip eder. Bu nedenle tek basina yesil bir deploy run'i, EKS'e gercekten deploy edildigi anlamina gelmez; final teslimat icin cluster, secret'lar ve dis erişim/ETL kanitlari da tamamlanmis olmalidir.
+
 ## Gözlemlenebilirlik
 
 - Backend `prom-client` ile gerçek HTTP metrikleri yayınlar

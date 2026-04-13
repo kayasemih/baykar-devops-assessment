@@ -4,19 +4,21 @@ Bu doküman, projenin AWS üzerinde çalışma maliyetinin kabaca tahminini suna
 
 ---
 
-## Beklenen Aylık Maliyet (eu-west-1, on-demand fiyatlandırma)
+## Beklenen Aylık Maliyet (eu-central-1, on-demand fiyatlandırma)
 
 | Kaynak | Birim | Fiyat/Saat | Aylık Maliyet |
 |--------|-------|-----------|--------------|
 | **EKS Control Plane** | 1 cluster | $0.10/saat | **$73** |
 | **EC2 Worker Nodes** (t3.medium × 2) | 2 instance | $0.0464/saat × 2 | **$67** |
 | **NAT Gateway** | 1 gateway | $0.048/saat + veri | **$35 + veri** |
-| **ALB (Load Balancer)** | 1 ALB | $0.0252/saat + LCU | **$18 + LCU** |
+| **NLB (Service LoadBalancer)** | 1 NLB | ~$0.0225/saat + LCU | **~$16 + LCU** |
 | **EBS (MongoDB Storage)** | 10 GB gp3 | $0.088/GB/ay | **$1** |
 | **ECR (Container Registry)** | ~500MB × 3 | $0.10/GB/ay | **< $1** |
 | **CloudWatch Logs** | EKS audit logs | $0.57/GB | **~$5** |
 
 ### **Toplam Tahmini: ~$200-250/ay**
+
+Not: Bu repository'deki varsayilan node instance type'i, bu AWS account'inda `t3.medium` launch edilemedigi icin `t3.micro` olarak ayarlandi. Yukaridaki tablo, daha gercekci staging/production kapasite tahmini icin `t3.medium` baz almayi surdurur.
 
 ---
 
@@ -67,4 +69,4 @@ Bu doküman, projenin AWS üzerinde çalışma maliyetinin kabaca tahminini suna
 
 ---
 
-> **Not:** Bu fiyatlar Nisan 2025 AWS eu-west-1 on-demand fiyatlarına dayanmaktadır. Gerçek maliyetler trafik hacmi, veri transferi ve kullanım istatistiklerine göre değişebilir.
+> **Not:** Bu fiyatlar Nisan 2025 AWS eu-central-1 on-demand fiyatlarına dayanmaktadır. Gerçek maliyetler trafik hacmi, veri transferi ve kullanım istatistiklerine göre değişebilir.

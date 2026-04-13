@@ -5,7 +5,7 @@
 variable "aws_region" {
   description = "AWS region to deploy resources"
   type        = string
-  default     = "eu-west-1" # Ireland — closest to Turkey with full EKS support
+  default     = "eu-central-1" # Frankfurt
 }
 
 variable "environment" {
@@ -39,7 +39,7 @@ variable "cluster_version" {
 variable "node_instance_type" {
   description = "EC2 instance type for EKS worker nodes"
   type        = string
-  default     = "t3.medium" # 2 vCPU, 4GB RAM — good balance of cost and capacity
+  default     = "t3.micro" # Free Tier eligible in this AWS account; keeps the node group launchable
 }
 
 variable "node_min_size" {
