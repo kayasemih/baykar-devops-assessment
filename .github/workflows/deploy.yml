@@ -150,18 +150,7 @@ jobs:
             --dry-run=client -o yaml | kubectl apply -f -
           rm -f "$ALERTMANAGER_FILE"
 
-          kubectl apply -f k8s/mongodb/storageclass.yaml
           kubectl apply -f k8s/mongodb/service.yaml
-
-          MONGODB_PVC_PHASE=$(kubectl get pvc mongodb-data-mongodb-0 -n ${{ env.NAMESPACE }} -o jsonpath='{.status.phase}' 2>/dev/null || true)
-          MONGODB_PVC_CLASS=$(kubectl get pvc mongodb-data-mongodb-0 -n ${{ env.NAMESPACE }} -o jsonpath='{.spec.storageClassName}' 2>/dev/null || true)
-
-          if [ "$MONGODB_PVC_PHASE" = "Pending" ] && [ -z "$MONGODB_PVC_CLASS" ]; then
-            echo "Deleting stale MongoDB StatefulSet and Pending PVC so the new storage class can take effect."
-            kubectl delete statefulset mongodb -n ${{ env.NAMESPACE }} --ignore-not-found=true --wait=true
-            kubectl delete pvc mongodb-data-mongodb-0 -n ${{ env.NAMESPACE }} --ignore-not-found=true --wait=true
-          fi
-
           kubectl apply -f k8s/mongodb/statefulset.yaml
           kubectl apply -f k8s/backend/configmap.yaml
           kubectl apply -f k8s/backend/deployment.yaml
