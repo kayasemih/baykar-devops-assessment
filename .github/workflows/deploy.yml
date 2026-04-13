@@ -236,11 +236,19 @@ jobs:
         run: |
           ECR_REGISTRY="${{ steps.login-ecr.outputs.registry }}"
           GIT_SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+          MONGODB_IMAGE="${ECR_REGISTRY}/baykar-devops/mongodb:${GIT_SHA}"
 
-          kubectl set image statefulset/mongodb mongodb=${ECR_REGISTRY}/baykar-devops/mongodb:${GIT_SHA} -n ${{ env.NAMESPACE }}
+          kubectl set image statefulset/mongodb mongodb=${MONGODB_IMAGE} -n ${{ env.NAMESPACE }}
           kubectl set image deployment/frontend frontend=${ECR_REGISTRY}/baykar-devops/frontend:${GIT_SHA} -n ${{ env.NAMESPACE }}
           kubectl set image deployment/backend backend=${ECR_REGISTRY}/baykar-devops/backend:${GIT_SHA} -n ${{ env.NAMESPACE }}
           kubectl set image cronjob/etl etl=${ECR_REGISTRY}/baykar-devops/etl:${GIT_SHA} -n ${{ env.NAMESPACE }}
+
+          CURRENT_MONGODB_IMAGE=$(kubectl get pod mongodb-0 -n ${{ env.NAMESPACE }} -o jsonpath='{.spec.containers[?(@.name=="mongodb")].image}' 2>/dev/null || true)
+
+          if [ -n "$CURRENT_MONGODB_IMAGE" ] && [ "$CURRENT_MONGODB_IMAGE" != "$MONGODB_IMAGE" ]; then
+            echo "Replacing stale MongoDB pod so the StatefulSet can recreate it with ${MONGODB_IMAGE}."
+            kubectl delete pod mongodb-0 -n ${{ env.NAMESPACE }} --wait=true
+          fi
 
       - name: Verify ETL job execution
         if: steps.prerequisites.outputs.ready == 'true' && (github.event_name != 'workflow_dispatch' || !inputs.monitoring_only)
@@ -268,6 +276,9 @@ jobs:
           fi
 
           echo "Waiting for MongoDB rollout..."
+          echo "MongoDB desired image: $(kubectl get statefulset mongodb -n ${{ env.NAMESPACE }} -o jsonpath='{.spec.template.spec.containers[?(@.name=="mongodb")].image}')"
+          echo "MongoDB current pod image: $(kubectl get pod mongodb-0 -n ${{ env.NAMESPACE }} -o jsonpath='{.spec.containers[?(@.name=="mongodb")].image}' 2>/dev/null || echo pending)"
+
           if ! kubectl rollout status statefulset/mongodb -n ${{ env.NAMESPACE }} --timeout=600s; then
             echo "MongoDB rollout did not complete. Current MongoDB state:"
             kubectl get statefulset mongodb -n ${{ env.NAMESPACE }} -o wide || true
@@ -353,7 +364,7 @@ jobs:
             exit 0
           fi
 
-          kubectl rollout undo statefulset/mongodb -n ${{ env.NAMESPACE }} || true
+          echo "Skipping MongoDB rollback to avoid restoring a stale StatefulSet revision."
           kubectl rollout undo deployment/backend -n ${{ env.NAMESPACE }} || true
           kubectl rollout undo deployment/frontend -n ${{ env.NAMESPACE }} || true
           echo "Rollback complete. Previous version restored."
