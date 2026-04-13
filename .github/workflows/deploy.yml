@@ -19,6 +19,17 @@ on:
     workflows: ["CI — Build & Test"]
     types: [completed]
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      monitoring_only:
+        description: Only test monitoring manifests and Helm installs
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: deploy-eks
+  cancel-in-progress: true
 
 env:
   AWS_REGION: eu-central-1
@@ -30,14 +41,14 @@ jobs:
     name: Deploy to EKS
     runs-on: ubuntu-latest
     # Only deploy if CI passed
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       id-token: write
       contents: read
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -201,10 +212,10 @@ jobs:
           kubectl get events -n monitoring --sort-by=.lastTimestamp || true
 
       - name: Set runtime images
-        if: steps.prerequisites.outputs.ready == 'true'
+        if: steps.prerequisites.outputs.ready == 'true' && (github.event_name != 'workflow_dispatch' || !inputs.monitoring_only)
         run: |
           ECR_REGISTRY="${{ steps.login-ecr.outputs.registry }}"
-          GIT_SHA="${{ github.event.workflow_run.head_sha }}"
+          GIT_SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
 
           kubectl set image statefulset/mongodb mongodb=${ECR_REGISTRY}/baykar-devops/mongodb:${GIT_SHA} -n ${{ env.NAMESPACE }}
           kubectl set image deployment/frontend frontend=${ECR_REGISTRY}/baykar-devops/frontend:${GIT_SHA} -n ${{ env.NAMESPACE }}
@@ -212,9 +223,9 @@ jobs:
           kubectl set image cronjob/etl etl=${ECR_REGISTRY}/baykar-devops/etl:${GIT_SHA} -n ${{ env.NAMESPACE }}
 
       - name: Verify ETL job execution
-        if: steps.prerequisites.outputs.ready == 'true'
+        if: steps.prerequisites.outputs.ready == 'true' && (github.event_name != 'workflow_dispatch' || !inputs.monitoring_only)
         run: |
-          SHORT_SHA=$(printf '%s' "${{ github.event.workflow_run.head_sha }}" | cut -c1-8)
+          SHORT_SHA=$(printf '%s' "${{ github.event.workflow_run.head_sha || github.sha }}" | cut -c1-8)
           JOB_NAME="etl-smoke-${SHORT_SHA}"
 
           kubectl delete job "${JOB_NAME}" -n ${{ env.NAMESPACE }} --ignore-not-found=true
@@ -222,7 +233,7 @@ jobs:
           kubectl wait --for=condition=complete job/"${JOB_NAME}" -n ${{ env.NAMESPACE }} --timeout=180s
 
       - name: Wait for rollouts to complete
-        if: steps.prerequisites.outputs.ready == 'true'
+        if: steps.prerequisites.outputs.ready == 'true' && (github.event_name != 'workflow_dispatch' || !inputs.monitoring_only)
         run: |
           echo "Waiting for MongoDB rollout..."
           kubectl rollout status statefulset/mongodb -n ${{ env.NAMESPACE }} --timeout=180s
@@ -243,7 +254,7 @@ jobs:
           echo "All deployments rolled out successfully."
 
       - name: Smoke test
-        if: steps.prerequisites.outputs.ready == 'true'
+        if: steps.prerequisites.outputs.ready == 'true' && (github.event_name != 'workflow_dispatch' || !inputs.monitoring_only)
         run: |
           for i in {1..20}; do
             FRONTEND_HOST=$(kubectl get svc frontend -n ${{ env.NAMESPACE }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
@@ -267,7 +278,7 @@ jobs:
           exit 1
 
       - name: Rollback on failure
-        if: failure() && steps.prerequisites.outputs.ready == 'true'
+        if: failure() && steps.prerequisites.outputs.ready == 'true' && (github.event_name != 'workflow_dispatch' || !inputs.monitoring_only)
         run: |
           echo "Deployment failed. Rolling back if kubectl is configured..."
 
