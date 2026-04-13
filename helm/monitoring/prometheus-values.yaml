@@ -1,0 +1,90 @@
+# Prometheus is installed with Helm so the monitoring stack matches
+# the assessment requirement while keeping repo-owned scrape config.
+alertmanager:
+  enabled: false
+
+kube-state-metrics:
+  enabled: false
+
+prometheus-node-exporter:
+  enabled: false
+
+pushgateway:
+  enabled: false
+
+server:
+  persistentVolume:
+    enabled: false
+  extraFlags:
+    - web.enable-lifecycle
+  service:
+    type: ClusterIP
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+serverFiles:
+  prometheus.yml:
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    rule_files:
+      - /etc/config/alert-rules.yml
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets:
+                - alertmanager.monitoring.svc.cluster.local:9093
+    scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets:
+              - localhost:9090
+      - job_name: backend
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - backend.baykar-app.svc.cluster.local:5050
+  alert-rules.yml:
+    groups:
+      - name: application
+        rules:
+          - alert: BackendDown
+            expr: up{job="backend"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: Backend is unreachable for more than 1 minute
+              description: Prometheus cannot scrape the backend /metrics endpoint.
+
+          - alert: HighErrorRate
+            expr: |
+              (
+                sum(rate(http_requests_total{job="backend",status_code=~"5.."}[5m]))
+                /
+                clamp_min(sum(rate(http_requests_total{job="backend"}[5m])), 1)
+              ) > 0.05
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: Error rate exceeded the 5 percent SLO threshold
+              description: '{{ $value | humanizePercentage }} of requests are failing.'
+
+          - alert: HighLatency
+            expr: |
+              histogram_quantile(
+                0.95,
+                sum by (le) (rate(http_request_duration_seconds_bucket{job="backend"}[5m]))
+              ) > 0.5
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: API p95 latency exceeds 500ms
+              description: 'Backend p95 latency is {{ $value }} seconds.'

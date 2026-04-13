@@ -73,7 +73,7 @@ make etl
 1. EKS kubeconfig oluşturur
 2. `mongodb-secret` değerlerini GitHub secret'lardan üretir
 3. Alertmanager webhook secret'ını üretir
-4. Uygulama ve monitoring manifestlerini uygular
+4. Uygulama manifestlerini, Loki/Alertmanager bileşenlerini ve Helm tabanli monitoring release'lerini uygular
 5. Frontend, backend, MongoDB ve ETL image'larını SHA tag'i ile set eder
 6. ETL CronJob'u bir kez tetikleyip tamamlandığını doğrular
 7. Rollout bekler
@@ -94,7 +94,7 @@ Gerekli GitHub secret'ları:
 - Backend `prom-client` ile gerçek HTTP metrikleri yayınlar
 - Prometheus sadece gerçek scrape target'larını toplar
 - Alertmanager secret-backed webhook receiver ile kritik alert bildirimleri yollar
-- Grafana, Prometheus ve Loki datasource'ları ile gelir
+- Grafana, Helm values dosyalarindan Prometheus ve Loki datasource'lari ile gelir
 - Promtail pod log'larını Loki'ye taşır
 
 Ana alertler:
@@ -119,8 +119,9 @@ Ana alertler:
 
 ```text
 terraform/           Altyapi kodlari
+helm/                Helm values dosyalari
 k8s/                 Kubernetes manifestleri
-  monitoring/        Monitoring ve alerting manifestleri
+  monitoring/        Loki, Alertmanager ve dashboard asset'leri
 apps/                MERN, ETL ve Dockerfile'lar
 .github/workflows/   CI/CD boru hatlari
 docs/                Kurulum ve kanit dokumanlari

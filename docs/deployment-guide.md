@@ -31,6 +31,7 @@ Gereksinimler:
 - AWS CLI
 - Terraform >= 1.5
 - kubectl
+- Helm 3
 - Docker
 - HPA davranışını doğrulamak için cluster'da `metrics-server`
 
@@ -125,13 +126,23 @@ kubectl create secret generic alertmanager-config \
   --namespace monitoring \
   --from-file=alertmanager.yml=/tmp/alertmanager.yml
 
-kubectl apply -f k8s/monitoring/prometheus/
+kubectl apply -f k8s/monitoring/prometheus/alertmanager.yaml
 kubectl apply -f k8s/monitoring/loki/
 kubectl create configmap grafana-dashboards \
   --from-file=k8s/monitoring/grafana/dashboards/ \
   -n monitoring --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply -f k8s/monitoring/grafana/deployment.yaml
-kubectl apply -f k8s/monitoring/grafana/service.yaml
+
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+
+helm upgrade --install monitoring-prometheus prometheus-community/prometheus \
+  --namespace monitoring \
+  --values helm/monitoring/prometheus-values.yaml
+
+helm upgrade --install monitoring-grafana grafana/grafana \
+  --namespace monitoring \
+  --values helm/monitoring/grafana-values.yaml
 ```
 
 Sonrasında uygun image'ları set edin:
@@ -169,8 +180,8 @@ kubectl get jobs -n baykar-app --sort-by=.metadata.creationTimestamp
 Monitoring erişimi:
 
 ```bash
-kubectl port-forward -n monitoring svc/grafana 3000:3000
-kubectl port-forward -n monitoring svc/prometheus 9090:9090
+kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80
+kubectl port-forward -n monitoring svc/monitoring-prometheus-server 9090:80
 ```
 
 ## 6. Sorun Giderme
@@ -180,7 +191,7 @@ kubectl port-forward -n monitoring svc/prometheus 9090:9090
 | Frontend dışarı açılmıyor | `kubectl get svc frontend -n baykar-app -o wide` |
 | Backend readiness başarısız | `kubectl logs deployment/backend -n baykar-app` |
 | MongoDB bağlantı sorunu | Secret değerleri ve `readyz` çıktısı |
-| Prometheus target down | `kubectl port-forward svc/prometheus -n monitoring 9090:9090` ve Targets ekranı |
+| Prometheus target down | `kubectl port-forward svc/monitoring-prometheus-server -n monitoring 9090:80` ve Targets ekranı |
 | Log görünmüyor | `kubectl get pods -n monitoring -l app=promtail` |
 
 `/tmp/alertmanager.yml` geçici dosyasını iş bittikten sonra silebilirsiniz.

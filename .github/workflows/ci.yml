@@ -63,7 +63,9 @@ jobs:
           for f in k8s/*.yaml k8s/**/*.yaml; do
             if [ -f "$f" ] && [[ "$f" != *"example"* ]]; then
               echo "Validating $f..."
-              kubectl apply --dry-run=client -f "$f"
+              # Keep this check fully client-side in CI. GitHub runners do not
+              # have a live Kubernetes API server for OpenAPI schema discovery.
+              kubectl apply --dry-run=client --validate=false -f "$f"
             fi
           done
 

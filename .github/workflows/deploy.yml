@@ -55,6 +55,13 @@ jobs:
             --region ${{ env.AWS_REGION }} \
             --name ${{ env.CLUSTER_NAME }}
 
+      - name: Install Helm
+        run: |
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add grafana https://grafana.github.io/helm-charts
+          helm repo update
+
       - name: Validate deployment secrets
         env:
           ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
@@ -115,15 +122,22 @@ jobs:
           kubectl apply -f k8s/etl-cronjob.yaml
           kubectl apply -f k8s/network-policy.yaml
 
-          kubectl apply -f k8s/monitoring/prometheus/
+          kubectl apply -f k8s/monitoring/prometheus/alertmanager.yaml
           kubectl apply -f k8s/monitoring/loki/
 
           kubectl create configmap grafana-dashboards \
             --from-file=k8s/monitoring/grafana/dashboards/ \
             -n monitoring --dry-run=client -o yaml | kubectl apply -f -
 
-          kubectl apply -f k8s/monitoring/grafana/deployment.yaml
-          kubectl apply -f k8s/monitoring/grafana/service.yaml
+          helm upgrade --install monitoring-prometheus prometheus-community/prometheus \
+            --namespace monitoring \
+            --values helm/monitoring/prometheus-values.yaml \
+            --wait
+
+          helm upgrade --install monitoring-grafana grafana/grafana \
+            --namespace monitoring \
+            --values helm/monitoring/grafana-values.yaml \
+            --wait
 
       - name: Set runtime images
         run: |
@@ -156,11 +170,11 @@ jobs:
           kubectl rollout status deployment/frontend -n ${{ env.NAMESPACE }} --timeout=180s
 
           echo "Waiting for monitoring rollouts..."
-          kubectl rollout status deployment/prometheus -n monitoring --timeout=180s
           kubectl rollout status deployment/alertmanager -n monitoring --timeout=180s
           kubectl rollout status deployment/loki -n monitoring --timeout=180s
-          kubectl rollout status deployment/grafana -n monitoring --timeout=180s
           kubectl rollout status daemonset/promtail -n monitoring --timeout=180s
+          kubectl wait --for=condition=available deployment -l app.kubernetes.io/instance=monitoring-prometheus -n monitoring --timeout=180s
+          kubectl wait --for=condition=available deployment -l app.kubernetes.io/instance=monitoring-grafana -n monitoring --timeout=180s
 
           echo "All deployments rolled out successfully."
 
