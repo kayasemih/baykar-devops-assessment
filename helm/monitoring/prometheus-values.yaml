@@ -15,6 +15,7 @@ pushgateway:
 server:
   persistentVolume:
     enabled: false
+  retention: 12h
   extraFlags:
     - web.enable-lifecycle
   service:
@@ -22,10 +23,10 @@ server:
   resources:
     requests:
       cpu: 100m
-      memory: 128Mi
+      memory: 256Mi
     limits:
       cpu: 250m
-      memory: 256Mi
+      memory: 512Mi
 
 serverFiles:
   prometheus.yml:

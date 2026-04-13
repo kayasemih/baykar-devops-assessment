@@ -158,17 +158,47 @@ jobs:
             --from-file=k8s/monitoring/grafana/dashboards/ \
             -n monitoring --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Install Prometheus
+        if: steps.prerequisites.outputs.ready == 'true'
+        run: |
           helm upgrade --install monitoring-prometheus prometheus-community/prometheus \
             --namespace monitoring \
             --values helm/monitoring/prometheus-values.yaml \
             --wait \
             --timeout 15m
 
+      - name: Install Grafana
+        if: steps.prerequisites.outputs.ready == 'true'
+        run: |
           helm upgrade --install monitoring-grafana grafana/grafana \
             --namespace monitoring \
             --values helm/monitoring/grafana-values.yaml \
             --wait \
             --timeout 15m
+
+      - name: Gather monitoring diagnostics on failure
+        if: failure() && steps.prerequisites.outputs.ready == 'true'
+        run: |
+          echo "Monitoring Helm releases"
+          helm list -n monitoring || true
+
+          echo "Prometheus release status"
+          helm status monitoring-prometheus -n monitoring || true
+
+          echo "Grafana release status"
+          helm status monitoring-grafana -n monitoring || true
+
+          echo "Monitoring workloads"
+          kubectl get all -n monitoring -o wide || true
+
+          echo "Monitoring pods"
+          kubectl get pods -n monitoring -o wide || true
+
+          echo "Monitoring pod descriptions"
+          kubectl describe pods -n monitoring || true
+
+          echo "Monitoring events"
+          kubectl get events -n monitoring --sort-by=.lastTimestamp || true
 
       - name: Set runtime images
         if: steps.prerequisites.outputs.ready == 'true'
