@@ -55,17 +55,17 @@ jobs:
 
       - name: Validate K8s manifests
         run: |
-          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          chmod +x kubectl
-          sudo mv kubectl /usr/local/bin/
+          curl -sSL -o kubeconform.tar.gz \
+            https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          tar -xzf kubeconform.tar.gz
+          chmod +x kubeconform
+          sudo mv kubeconform /usr/local/bin/
 
           shopt -s globstar nullglob
           for f in k8s/*.yaml k8s/**/*.yaml; do
             if [ -f "$f" ] && [[ "$f" != *"example"* ]]; then
               echo "Validating $f..."
-              # Keep this check fully client-side in CI. GitHub runners do not
-              # have a live Kubernetes API server for OpenAPI schema discovery.
-              kubectl apply --dry-run=client --validate=false -f "$f"
+              kubeconform -strict -summary "$f"
             fi
           done
 
