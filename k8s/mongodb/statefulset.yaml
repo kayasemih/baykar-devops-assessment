@@ -87,6 +87,7 @@ spec:
         name: mongodb-data
       spec:
         accessModes: ["ReadWriteOnce"]
+        storageClassName: baykar-gp3
         resources:
           requests:
             storage: 10Gi

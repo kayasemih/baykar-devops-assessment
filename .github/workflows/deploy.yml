@@ -150,8 +150,19 @@ jobs:
             --dry-run=client -o yaml | kubectl apply -f -
           rm -f "$ALERTMANAGER_FILE"
 
-          kubectl apply -f k8s/mongodb/statefulset.yaml
+          kubectl apply -f k8s/mongodb/storageclass.yaml
           kubectl apply -f k8s/mongodb/service.yaml
+
+          MONGODB_PVC_PHASE=$(kubectl get pvc mongodb-data-mongodb-0 -n ${{ env.NAMESPACE }} -o jsonpath='{.status.phase}' 2>/dev/null || true)
+          MONGODB_PVC_CLASS=$(kubectl get pvc mongodb-data-mongodb-0 -n ${{ env.NAMESPACE }} -o jsonpath='{.spec.storageClassName}' 2>/dev/null || true)
+
+          if [ "$MONGODB_PVC_PHASE" = "Pending" ] && [ -z "$MONGODB_PVC_CLASS" ]; then
+            echo "Deleting stale MongoDB StatefulSet and Pending PVC so the new storage class can take effect."
+            kubectl delete statefulset mongodb -n ${{ env.NAMESPACE }} --ignore-not-found=true --wait=true
+            kubectl delete pvc mongodb-data-mongodb-0 -n ${{ env.NAMESPACE }} --ignore-not-found=true --wait=true
+          fi
+
+          kubectl apply -f k8s/mongodb/statefulset.yaml
           kubectl apply -f k8s/backend/configmap.yaml
           kubectl apply -f k8s/backend/deployment.yaml
           kubectl apply -f k8s/backend/service.yaml
@@ -255,8 +266,30 @@ jobs:
       - name: Wait for rollouts to complete
         if: steps.prerequisites.outputs.ready == 'true' && (github.event_name != 'workflow_dispatch' || !inputs.monitoring_only)
         run: |
+          echo "Waiting for MongoDB volume claim to bind..."
+          kubectl wait --for=create pvc/mongodb-data-mongodb-0 -n ${{ env.NAMESPACE }} --timeout=60s
+
+          if ! kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/mongodb-data-mongodb-0 -n ${{ env.NAMESPACE }} --timeout=180s; then
+            echo "MongoDB PVC did not bind. Current storage state:"
+            kubectl get pvc -n ${{ env.NAMESPACE }} || true
+            kubectl describe pvc mongodb-data-mongodb-0 -n ${{ env.NAMESPACE }} || true
+            kubectl get storageclass || true
+            kubectl get events -n ${{ env.NAMESPACE }} --sort-by=.lastTimestamp || true
+            exit 1
+          fi
+
           echo "Waiting for MongoDB rollout..."
-          kubectl rollout status statefulset/mongodb -n ${{ env.NAMESPACE }} --timeout=600s
+          if ! kubectl rollout status statefulset/mongodb -n ${{ env.NAMESPACE }} --timeout=600s; then
+            echo "MongoDB rollout did not complete. Current MongoDB state:"
+            kubectl get statefulset mongodb -n ${{ env.NAMESPACE }} -o wide || true
+            kubectl get pods -n ${{ env.NAMESPACE }} -l app=mongodb -o wide || true
+            kubectl get pvc -n ${{ env.NAMESPACE }} || true
+            kubectl describe statefulset mongodb -n ${{ env.NAMESPACE }} || true
+            kubectl describe pod mongodb-0 -n ${{ env.NAMESPACE }} || true
+            kubectl describe pvc mongodb-data-mongodb-0 -n ${{ env.NAMESPACE }} || true
+            kubectl get events -n ${{ env.NAMESPACE }} --sort-by=.lastTimestamp || true
+            exit 1
+          fi
 
           echo "Waiting for backend rollout..."
           kubectl rollout status deployment/backend -n ${{ env.NAMESPACE }} --timeout=180s
@@ -303,8 +336,17 @@ jobs:
           echo "Application workloads"
           kubectl get all -n ${{ env.NAMESPACE }} -o wide || true
 
+          echo "Application PVCs"
+          kubectl get pvc -n ${{ env.NAMESPACE }} || true
+
+          echo "Storage classes"
+          kubectl get storageclass || true
+
           echo "Application pod descriptions"
           kubectl describe pods -n ${{ env.NAMESPACE }} || true
+
+          echo "MongoDB PVC description"
+          kubectl describe pvc mongodb-data-mongodb-0 -n ${{ env.NAMESPACE }} || true
 
           echo "MongoDB logs"
           kubectl logs statefulset/mongodb -n ${{ env.NAMESPACE }} --tail=200 || true
