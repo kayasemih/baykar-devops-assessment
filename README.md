@@ -5,6 +5,33 @@ Bu repo, verilen iki projeyi teslim edilebilir bir DevOps cozumune donusturmek i
 - MERN stack web uygulamasi
 - Saatlik calisan Python ETL gorevi
 
+## Teslim Bilgisi
+
+- GitHub repository: `https://github.com/kayasemih/baykar-devops-assessment-submission`
+- Teslim paketi: `baykar-devops-assessment-submission.zip`
+
+## Son Teslim Yorumu
+
+```text
+Merhaba,
+
+DevOps / SRE teknik vaka calismasi teslimim ektedir.
+
+GitHub repository adresi:
+https://github.com/kayasemih/baykar-devops-assessment-submission
+
+Bu calisma kapsaminda:
+- MERN uygulamasi Docker ile containerize edildi
+- Kubernetes ile orkestrasyon yapildi
+- Terraform ile AWS altyapisi tanimlandi
+- GitHub Actions ile CI/CD pipeline kuruldu
+- Logging, monitoring ve alerting yapisi eklendi
+- Python ETL gorevi saatlik calisacak sekilde hazirlandi
+- Calisan sisteme ait ekran goruntuleri ve teknik dokumantasyon repo icine eklendi
+
+Tesekkur ederim.
+```
+
 Amac; uygulamalari containerize etmek, Kubernetes uzerinde calistirmak, CI/CD otomasyonu kurmak, gozlemlenebilirlik eklemek ve tum sureci dokumante etmektir.
 
 ## Kullanilan Teknolojiler
