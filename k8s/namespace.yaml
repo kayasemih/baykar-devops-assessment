@@ -1,0 +1,9 @@
+# Namespace isolates our resources from other workloads on the cluster.
+# It also makes cleanup easy: kubectl delete namespace baykar-app
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: baykar-app
+  labels:
+    project: baykar-devops-case
+    managed-by: kubectl

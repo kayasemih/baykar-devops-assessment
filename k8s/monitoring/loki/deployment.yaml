@@ -1,0 +1,52 @@
+# ============================================================
+# Loki — Log Aggregation
+# ============================================================
+# Loki is like Prometheus, but for logs.
+# It indexes log metadata (labels) not content, making it very efficient.
+# Query logs via Grafana using LogQL.
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loki
+  namespace: monitoring
+  labels:
+    app: loki
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loki
+  template:
+    metadata:
+      labels:
+        app: loki
+    spec:
+      containers:
+        - name: loki
+          image: grafana/loki:2.9.6
+          ports:
+            - containerPort: 3100
+          args:
+            - "-config.file=/etc/loki/local-config.yaml"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "300m"
+              memory: "256Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki
+  namespace: monitoring
+spec:
+  type: ClusterIP
+  selector:
+    app: loki
+  ports:
+    - port: 3100
+      targetPort: 3100

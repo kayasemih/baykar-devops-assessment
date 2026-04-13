@@ -1,0 +1,34 @@
+# ============================================================
+# Prometheus — Configuration
+# ============================================================
+# Defines what Prometheus scrapes and how often.
+# ============================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    # Alert rules file
+    rule_files:
+      - /etc/prometheus/alert-rules.yml
+
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: ['alertmanager:9093']
+
+    scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      - job_name: 'backend'
+        metrics_path: /metrics
+        static_configs:
+          - targets: ['backend.baykar-app.svc.cluster.local:5050']

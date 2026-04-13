@@ -1,0 +1,27 @@
+# ============================================================
+# MongoDB — Headless Service
+# ============================================================
+# WHY Headless (clusterIP: None)?
+#
+# A normal Service load-balances across pods. That's fine for stateless apps.
+# But MongoDB needs direct, stable DNS names for each pod:
+#   mongodb-0.mongodb.baykar-app.svc.cluster.local
+#
+# With clusterIP: None, K8s creates DNS records pointing to individual pod IPs
+# instead of a virtual IP. The StatefulSet relies on this for stable identity.
+# ============================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+  namespace: baykar-app
+  labels:
+    app: mongodb
+spec:
+  clusterIP: None    # Headless — no load balancing, direct pod DNS
+  selector:
+    app: mongodb
+  ports:
+    - port: 27017
+      targetPort: 27017
+      name: mongodb

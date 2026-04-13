@@ -1,0 +1,104 @@
+# ============================================================
+# Baykar DevOps Case — Full Stack Docker Compose
+# ============================================================
+# Usage:
+#   docker compose up -d        # Start everything
+#   docker compose down         # Stop everything
+#   docker compose run etl      # Run ETL job manually
+#   docker compose logs -f      # Watch logs
+#
+# Architecture:
+#   [Browser] → [frontend:80 (Nginx)] → /api/* → [backend:5050 (Express)] → [mongodb:27017]
+#                                      → /*    → [React static files]
+# ============================================================
+
+services:
+
+  # -----------------------------------------------------------
+  # MongoDB — the data layer
+  # -----------------------------------------------------------
+  mongodb:
+    build:
+      context: ./apps/mongodb
+      dockerfile: Dockerfile
+    image: baykar-mongodb:local
+    container_name: baykar-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      # In production, these would come from a secrets manager.
+      # For local dev, plain env vars are fine.
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASS:-baykar2024}
+      MONGO_INITDB_DATABASE: sample_training
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - baykar-network
+
+  # -----------------------------------------------------------
+  # Backend — Express.js API
+  # -----------------------------------------------------------
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    container_name: baykar-backend
+    restart: unless-stopped
+    ports:
+      - "5050:5050"
+    environment:
+      # mongodb:// not mongodb+srv:// — we're connecting to our local container, not Atlas
+      ATLAS_URI: mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASS:-baykar2024}@mongodb:27017/sample_training?authSource=admin
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - baykar-network
+
+  # -----------------------------------------------------------
+  # Frontend — React served by Nginx
+  # -----------------------------------------------------------
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile
+    container_name: baykar-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - baykar-network
+
+  # -----------------------------------------------------------
+  # ETL — Python job (runs once and exits)
+  # -----------------------------------------------------------
+  # Not started by default. Run with: docker compose run etl
+  # In Kubernetes, this becomes a CronJob that runs every hour.
+  etl:
+    build:
+      context: ./apps/etl
+      dockerfile: Dockerfile
+    container_name: baykar-etl
+    profiles:
+      - etl
+    networks:
+      - baykar-network
+
+volumes:
+  mongodb_data:
+    driver: local
+
+networks:
+  baykar-network:
+    driver: bridge

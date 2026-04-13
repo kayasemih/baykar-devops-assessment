@@ -1,0 +1,22 @@
+# ============================================================
+# Backend — ConfigMap
+# ============================================================
+# Non-sensitive configuration. For secrets (passwords), use Secret objects.
+#
+# NOT: MongoDB connection string burada değil, deployment.yaml'da
+# doğrudan env tanımında oluşturuluyor. Çünkü connection string
+# içinde secret referansları var ve ConfigMap bunları resolve edemez.
+# ConfigMap sadece gerçekten "config" olan değerler için.
+# ============================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: baykar-app
+data:
+  # MongoDB host — K8s internal DNS üzerinden
+  # "mongodb-0.mongodb" headless Service sayesinde çözümlenir
+  MONGO_HOST: "mongodb-0.mongodb.baykar-app.svc.cluster.local"
+  MONGO_PORT: "27017"
+  MONGO_DB: "sample_training"
+  NODE_ENV: "production"

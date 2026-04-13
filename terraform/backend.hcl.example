@@ -1,0 +1,5 @@
+bucket         = "baykar-terraform-state"
+key            = "baykar-devops-assessment/terraform.tfstate"
+region         = "eu-west-1"
+dynamodb_table = "baykar-terraform-locks"
+encrypt        = true

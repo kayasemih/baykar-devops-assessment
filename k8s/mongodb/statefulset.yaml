@@ -1,0 +1,92 @@
+# ============================================================
+# MongoDB — StatefulSet
+# ============================================================
+# WHY StatefulSet instead of Deployment?
+#
+# MongoDB is a stateful application. It needs:
+#   1. Stable network identity (pod name stays mongodb-0, not random hash)
+#   2. Persistent storage (if pod restarts, it reconnects to the SAME volume)
+#   3. Ordered startup (important for replica sets)
+#
+# A Deployment doesn't guarantee any of these.
+# This is the #1 thing interviewers check about K8s knowledge.
+# ============================================================
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongodb
+  namespace: baykar-app
+  labels:
+    app: mongodb
+spec:
+  serviceName: mongodb  # Links to the headless Service
+  replicas: 1           # Single replica for case study; use 3 for replica set in prod
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+        - name: mongodb
+          # In CI/CD, this gets replaced with the ECR image + git SHA tag.
+          image: baykar-mongodb:latest
+          ports:
+            - containerPort: 27017
+              name: mongodb
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secret
+                  key: mongo-root-username
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secret
+                  key: mongo-root-password
+            - name: MONGO_INITDB_DATABASE
+              value: "sample_training"
+          # Resource limits prevent one pod from consuming all node resources.
+          # These values are sized for a case study — tune for production workload.
+          resources:
+            requests:
+              cpu: "250m"        # 0.25 CPU core guaranteed
+              memory: "256Mi"    # 256MB RAM guaranteed
+            limits:
+              cpu: "500m"        # Can burst up to 0.5 core
+              memory: "512Mi"    # Hard cap at 512MB
+          volumeMounts:
+            - name: mongodb-data
+              mountPath: /data/db
+          # Liveness: is the process alive? If not, K8s restarts the pod.
+          livenessProbe:
+            exec:
+              command:
+                - mongosh
+                - --eval
+                - "db.adminCommand('ping')"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          # Readiness: can it accept traffic? If not, Service removes it from endpoints.
+          readinessProbe:
+            exec:
+              command:
+                - mongosh
+                - --eval
+                - "db.adminCommand('ping')"
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      # Security context: don't run as root inside the container
+      # MongoDB image runs as user 999 (mongodb) by default
+  volumeClaimTemplates:
+    - metadata:
+        name: mongodb-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

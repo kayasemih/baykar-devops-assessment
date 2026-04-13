@@ -1,0 +1,197 @@
+# ============================================================
+# CD Pipeline — Deploy to Kubernetes
+# ============================================================
+# Runs automatically after CI succeeds on main branch.
+#
+# Flow:
+#   1. Configure kubectl for EKS
+#   2. Update image tags in K8s manifests with git SHA
+#   3. Apply manifests
+#   4. Wait for rollout to complete
+#   5. Run smoke test
+#   6. Auto-rollback on failure
+# ============================================================
+
+name: Deploy — EKS
+
+on:
+  workflow_run:
+    workflows: ["CI — Build & Test"]
+    types: [completed]
+    branches: [main]
+
+env:
+  AWS_REGION: eu-west-1
+  CLUSTER_NAME: baykar-devops-eks
+  NAMESPACE: baykar-app
+
+jobs:
+  deploy:
+    name: Deploy to EKS
+    runs-on: ubuntu-latest
+    # Only deploy if CI passed
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ env.CLUSTER_NAME }}
+
+      - name: Validate deployment secrets
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+          MONGO_ROOT_USER: ${{ secrets.MONGO_ROOT_USER }}
+          MONGO_ROOT_PASS: ${{ secrets.MONGO_ROOT_PASS }}
+        run: |
+          test -n "$ALERT_WEBHOOK_URL" || (echo "Missing GitHub secret: ALERT_WEBHOOK_URL" && exit 1)
+          test -n "$MONGO_ROOT_USER" || (echo "Missing GitHub secret: MONGO_ROOT_USER" && exit 1)
+          test -n "$MONGO_ROOT_PASS" || (echo "Missing GitHub secret: MONGO_ROOT_PASS" && exit 1)
+
+      - name: Apply Kubernetes manifests
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+          MONGO_ROOT_USER: ${{ secrets.MONGO_ROOT_USER }}
+          MONGO_ROOT_PASS: ${{ secrets.MONGO_ROOT_PASS }}
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/monitoring/namespace.yaml
+
+          kubectl create secret generic mongodb-secret \
+            --namespace ${{ env.NAMESPACE }} \
+            --from-literal=mongo-root-username="$MONGO_ROOT_USER" \
+            --from-literal=mongo-root-password="$MONGO_ROOT_PASS" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          ALERTMANAGER_FILE=$(mktemp)
+          cat > "$ALERTMANAGER_FILE" <<EOF
+          global:
+            resolve_timeout: 5m
+          route:
+            receiver: critical-webhook
+            group_by: ['alertname']
+            group_wait: 30s
+            group_interval: 5m
+            repeat_interval: 2h
+          receivers:
+            - name: critical-webhook
+              webhook_configs:
+                - url: ${ALERT_WEBHOOK_URL}
+                  send_resolved: true
+          EOF
+
+          kubectl create secret generic alertmanager-config \
+            --namespace monitoring \
+            --from-file=alertmanager.yml="$ALERTMANAGER_FILE" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          rm -f "$ALERTMANAGER_FILE"
+
+          kubectl apply -f k8s/mongodb/statefulset.yaml
+          kubectl apply -f k8s/mongodb/service.yaml
+          kubectl apply -f k8s/backend/configmap.yaml
+          kubectl apply -f k8s/backend/deployment.yaml
+          kubectl apply -f k8s/backend/service.yaml
+          kubectl apply -f k8s/backend/hpa.yaml
+          kubectl apply -f k8s/frontend/deployment.yaml
+          kubectl apply -f k8s/frontend/service.yaml
+          kubectl apply -f k8s/frontend/hpa.yaml
+          kubectl apply -f k8s/etl-cronjob.yaml
+          kubectl apply -f k8s/network-policy.yaml
+
+          kubectl apply -f k8s/monitoring/prometheus/
+          kubectl apply -f k8s/monitoring/loki/
+
+          kubectl create configmap grafana-dashboards \
+            --from-file=k8s/monitoring/grafana/dashboards/ \
+            -n monitoring --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl apply -f k8s/monitoring/grafana/deployment.yaml
+          kubectl apply -f k8s/monitoring/grafana/service.yaml
+
+      - name: Set runtime images
+        run: |
+          ECR_REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          GIT_SHA="${{ github.event.workflow_run.head_sha }}"
+
+          kubectl set image statefulset/mongodb mongodb=${ECR_REGISTRY}/baykar-devops/mongodb:${GIT_SHA} -n ${{ env.NAMESPACE }}
+          kubectl set image deployment/frontend frontend=${ECR_REGISTRY}/baykar-devops/frontend:${GIT_SHA} -n ${{ env.NAMESPACE }}
+          kubectl set image deployment/backend backend=${ECR_REGISTRY}/baykar-devops/backend:${GIT_SHA} -n ${{ env.NAMESPACE }}
+          kubectl set image cronjob/etl etl=${ECR_REGISTRY}/baykar-devops/etl:${GIT_SHA} -n ${{ env.NAMESPACE }}
+
+      - name: Verify ETL job execution
+        run: |
+          SHORT_SHA=$(printf '%s' "${{ github.event.workflow_run.head_sha }}" | cut -c1-8)
+          JOB_NAME="etl-smoke-${SHORT_SHA}"
+
+          kubectl delete job "${JOB_NAME}" -n ${{ env.NAMESPACE }} --ignore-not-found=true
+          kubectl create job --from=cronjob/etl "${JOB_NAME}" -n ${{ env.NAMESPACE }}
+          kubectl wait --for=condition=complete job/"${JOB_NAME}" -n ${{ env.NAMESPACE }} --timeout=180s
+
+      - name: Wait for rollouts to complete
+        run: |
+          echo "Waiting for MongoDB rollout..."
+          kubectl rollout status statefulset/mongodb -n ${{ env.NAMESPACE }} --timeout=180s
+
+          echo "Waiting for backend rollout..."
+          kubectl rollout status deployment/backend -n ${{ env.NAMESPACE }} --timeout=180s
+          
+          echo "Waiting for frontend rollout..."
+          kubectl rollout status deployment/frontend -n ${{ env.NAMESPACE }} --timeout=180s
+
+          echo "Waiting for monitoring rollouts..."
+          kubectl rollout status deployment/prometheus -n monitoring --timeout=180s
+          kubectl rollout status deployment/alertmanager -n monitoring --timeout=180s
+          kubectl rollout status deployment/loki -n monitoring --timeout=180s
+          kubectl rollout status deployment/grafana -n monitoring --timeout=180s
+          kubectl rollout status daemonset/promtail -n monitoring --timeout=180s
+
+          echo "All deployments rolled out successfully."
+
+      - name: Smoke test
+        run: |
+          for i in {1..20}; do
+            FRONTEND_HOST=$(kubectl get svc frontend -n ${{ env.NAMESPACE }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+
+            if [ -n "$FRONTEND_HOST" ]; then
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://${FRONTEND_HOST}/api/readyz/" || echo "000")
+            else
+              HTTP_CODE="000"
+            fi
+
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "Smoke test passed against http://${FRONTEND_HOST}/api/readyz/"
+              exit 0
+            fi
+
+            echo "Attempt $i: hostname='${FRONTEND_HOST:-pending}' HTTP $HTTP_CODE; retrying in 15s..."
+            sleep 15
+          done
+
+          echo "Smoke test failed."
+          exit 1
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "⚠️ Deployment failed! Rolling back..."
+          kubectl rollout undo statefulset/mongodb -n ${{ env.NAMESPACE }} || true
+          kubectl rollout undo deployment/backend -n ${{ env.NAMESPACE }}
+          kubectl rollout undo deployment/frontend -n ${{ env.NAMESPACE }}
+          echo "Rollback complete. Previous version restored."

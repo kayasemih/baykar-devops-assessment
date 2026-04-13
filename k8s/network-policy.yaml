@@ -1,0 +1,100 @@
+# ============================================================
+# NetworkPolicy — Pod-to-Pod Security
+# ============================================================
+# This is what separates a real SRE from a tutorial follower.
+# Most candidates skip NetworkPolicy entirely.
+#
+# Without NetworkPolicy, every pod can talk to every other pod.
+# That's fine for dev, but a security risk in production.
+# If an attacker compromises the frontend pod, they should NOT be able
+# to directly query MongoDB — only the backend should have that access.
+#
+# These policies implement the principle of least privilege at the network level.
+# ============================================================
+
+---
+# Rule 1: MongoDB only accepts connections from backend pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mongodb-allow-backend-only
+  namespace: baykar-app
+spec:
+  podSelector:
+    matchLabels:
+      app: mongodb
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: backend
+      ports:
+        - port: 27017
+          protocol: TCP
+
+---
+# Rule 2: Backend accepts connections from frontend pods only (on port 5050)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-allow-frontend-only
+  namespace: baykar-app
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow traffic from frontend pods
+    - from:
+        - podSelector:
+            matchLabels:
+              app: frontend
+      ports:
+        - port: 5050
+          protocol: TCP
+    # Allow traffic from Prometheus (for scraping metrics)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - port: 5050
+          protocol: TCP
+
+---
+# Rule 3: Frontend is the only internet-facing workload
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-allow-external-traffic
+  namespace: baykar-app
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - port: 8080
+          protocol: TCP
+
+---
+# Rule 4: Default deny all ingress — safety net
+# Any pod without a specific allow rule gets zero incoming traffic.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: baykar-app
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress

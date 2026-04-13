@@ -1,0 +1,96 @@
+# ============================================================
+# Backend — Deployment
+# ============================================================
+# Express.js API server. Runs behind the frontend Nginx proxy.
+# Connects to MongoDB via internal DNS.
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: baykar-app
+  labels:
+    app: backend
+spec:
+  replicas: 2    # Start with 2 for basic HA; HPA handles scaling up
+  selector:
+    matchLabels:
+      app: backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1          # Add 1 new pod before removing old ones
+      maxUnavailable: 0    # Never go below desired replica count during update
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          # In CI/CD, this gets replaced with the actual ECR image + git SHA tag.
+          # Using placeholder here; see .github/workflows/deploy.yml for the real flow.
+          image: baykar-backend:latest
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+          ports:
+            - containerPort: 5050
+          env:
+            # Build the MongoDB URI from secret values.
+            # This is more flexible than storing the full URI in ConfigMap.
+            - name: MONGO_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secret
+                  key: mongo-root-username
+            - name: MONGO_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secret
+                  key: mongo-root-password
+            - name: ATLAS_URI
+              value: "mongodb://$(MONGO_USER):$(MONGO_PASS)@mongodb-0.mongodb.baykar-app.svc.cluster.local:27017/sample_training?authSource=admin"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          # Liveness: is the process alive?
+          # Uses our /healthcheck endpoint — that's exactly what it's for.
+          livenessProbe:
+            httpGet:
+              path: /healthcheck/
+              port: 5050
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Readiness: can it serve traffic?
+          # Same endpoint, but different purpose. A pod could be alive but
+          # not ready (e.g., still connecting to MongoDB).
+          readinessProbe:
+            httpGet:
+              path: /readyz/
+              port: 5050
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+      # Prefer spreading pods across different nodes for HA.
+      # If one node dies, the other pod keeps serving.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - backend
+                topologyKey: kubernetes.io/hostname
